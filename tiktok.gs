@@ -111,7 +111,7 @@ function updateTikTokTracker() {
   } catch (err) {}
 
   try {
-    trackerSheet.showColumns(1, 22);
+    trackerSheet.showColumns(1, 24);
   } catch (err) {}
 
   trackerSheet.clear();
@@ -276,6 +276,12 @@ function buildTrackerRow_(data) {
   const old = data.old || {};
   const paid = toBoolean_(old.paid);
   const emailSent = toBoolean_(old.emailSent);
+  const emailSentDate = cleanTikTokValue_(old.emailSentDate);
+  const paymentWeek = cleanTikTokValue_(data.paymentWeek);
+  const status = cleanTikTokValue_(data.status);
+  const amount = Number(data.amount) || 0;
+  const outstandingThisRun = getTikTokOutstandingThisRun_(amount, paymentWeek, status, paid);
+  const actionNeeded = getTikTokActionNeeded_(status, outstandingThisRun, emailSent, emailSentDate, paid);
 
   const paymentKey = data.person
     ? makeTikTokPaymentKey_(data.person, data.caseRef, data.clientName)
@@ -293,14 +299,16 @@ function buildTrackerRow_(data) {
     data.typeColour,
     data.matchType,
     data.distance,
-    data.amount,
-    data.amount,
+    amount,
+    amount,
+    outstandingThisRun,
+    actionNeeded,
     emailSent,
-    cleanTikTokValue_(old.emailSentDate),
+    emailSentDate,
     paid,
     cleanTikTokValue_(old.paidDate),
-    data.paymentWeek,
-    data.status,
+    paymentWeek,
+    status,
     cleanTikTokValue_(old.notes) || data.reason,
     paymentKey,
     Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'dd/MM/yyyy HH:mm')
@@ -323,17 +331,17 @@ function buildTikTokTracker_(sheet, rows) {
   );
 
   const topRows = [
-    ['TikTok Tracker', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
-    ['Last Updated', now, '', 'Next Payment Week', nextPaymentWeek, '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
-    ['', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
+    ['TikTok Tracker', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
+    ['Last Updated', now, '', 'Next Payment Week', nextPaymentWeek, '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
+    ['', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
 
-    ['YUSUF', '', '', '', 'SULEMAN', '', '', '', 'CURRENT RUN TOTAL', '', '', '', 'ISSUES', '', '', '', 'PAID HISTORY', '', '', '', '', ''],
-    ['Completed This Run', summary.Yusuf.completed, '', '', 'Completed This Run', summary.Suleman.completed, '', '', 'Completed This Run', summary.Total.completed, '', '', 'Needs Review', summary.NeedsReview.count, '', '', 'Lifetime Paid', summary.History.totalPaid, '', '', '', ''],
-    ['Total Owed This Run', summary.Yusuf.totalOwed, '', '', 'Total Owed This Run', summary.Suleman.totalOwed, '', '', 'Total Owed This Run', summary.Total.totalOwed, '', '', 'Excluded', summary.Excluded.count, '', '', 'Paid Records', summary.History.totalPaidCount, '', '', '', ''],
-    ['Paid This Run', summary.Yusuf.paidAmount, '', '', 'Paid This Run', summary.Suleman.paidAmount, '', '', 'Paid This Run', summary.Total.paidAmount, '', '', 'Near Matches', nearMatchCount, '', '', 'Yusuf Lifetime', summary.History.Yusuf.totalPaid, '', '', '', ''],
-    ['Balance Due This Run', summary.Yusuf.balance, '', '', 'Balance Due This Run', summary.Suleman.balance, '', '', 'Balance Due This Run', summary.Total.balance, '', '', '', '', '', '', 'Suleman Lifetime', summary.History.Suleman.totalPaid, '', '', '', ''],
-    ['', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
-    ['', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
+    ['YUSUF', '', '', '', 'SULEMAN', '', '', '', 'CURRENT RUN TOTAL', '', '', '', 'OUTSTANDING', '', '', '', 'ISSUES', '', '', '', 'PAID HISTORY', '', '', ''],
+    ['Completed This Run', summary.Yusuf.completed, '', '', 'Completed This Run', summary.Suleman.completed, '', '', 'Completed This Run', summary.Total.completed, '', '', 'Yusuf Outstanding This Run', summary.Yusuf.balance, '', '', 'Needs Review', summary.NeedsReview.count, '', '', 'Lifetime Paid', summary.History.totalPaid, '', ''],
+    ['Total Owed This Run', summary.Yusuf.totalOwed, '', '', 'Total Owed This Run', summary.Suleman.totalOwed, '', '', 'Total Owed This Run', summary.Total.totalOwed, '', '', 'Suleman Outstanding This Run', summary.Suleman.balance, '', '', 'Excluded', summary.Excluded.count, '', '', 'Paid Records', summary.History.totalPaidCount, '', ''],
+    ['Paid This Run', summary.Yusuf.paidAmount, '', '', 'Paid This Run', summary.Suleman.paidAmount, '', '', 'Paid This Run', summary.Total.paidAmount, '', '', 'Total Outstanding This Run', summary.Total.balance, '', '', 'Near Matches', nearMatchCount, '', '', 'Yusuf Lifetime', summary.History.Yusuf.totalPaid, '', ''],
+    ['Balance Due This Run', summary.Yusuf.balance, '', '', 'Balance Due This Run', summary.Suleman.balance, '', '', 'Balance Due This Run', summary.Total.balance, '', '', 'Rows Awaiting Payment', summary.Total.unpaidCount, 'Rows Ready To Email', summary.Total.readyToEmailCount, '', '', '', '', 'Suleman Lifetime', summary.History.Suleman.totalPaid, '', ''],
+    ['', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
+    ['', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
 
     [
       'TikTok By',
@@ -349,6 +357,8 @@ function buildTikTokTracker_(sheet, rows) {
       'Colour Distance',
       'Rate',
       'Amount Owed',
+      'Outstanding This Run',
+      'Action Needed',
       'Email Sent?',
       'Email Sent Date',
       'Paid?',
@@ -366,8 +376,8 @@ function buildTikTokTracker_(sheet, rows) {
   if (rows.length > 0) {
     sheet.getRange(12, 1, rows.length, rows[0].length).setValues(rows);
 
-    sheet.getRange(12, 14, rows.length, 1).insertCheckboxes();
     sheet.getRange(12, 16, rows.length, 1).insertCheckboxes();
+    sheet.getRange(12, 18, rows.length, 1).insertCheckboxes();
   }
 
   formatTikTokTracker_(sheet, rows.length);
@@ -415,10 +425,11 @@ function sendMonthlyTikTokPaymentEmails() {
     const sheet = ss.getSheetByName(TIKTOK_CONFIG.TRACKER_SHEET_NAME);
 
     items.forEach(item => {
-      sheet.getRange(item.rowNumber, 14).setValue(true);
-      sheet.getRange(item.rowNumber, 15).setValue(today);
-      sheet.getRange(item.rowNumber, 18).setValue(paymentWeek);
-      sheet.getRange(item.rowNumber, 19).setValue('Email Sent');
+      sheet.getRange(item.rowNumber, 16).setValue(true);
+      sheet.getRange(item.rowNumber, 17).setValue(today);
+      sheet.getRange(item.rowNumber, 20).setValue(paymentWeek);
+      sheet.getRange(item.rowNumber, 21).setValue('Email Sent');
+      sheet.getRange(item.rowNumber, 15).setValue('EMAILED - AWAITING PAYMENT');
     });
 
     emailsSent++;
@@ -500,7 +511,7 @@ function getUnpaidTikTokGroupedRows_() {
     return grouped;
   }
 
-  const values = sheet.getRange(12, 1, lastRow - 11, 22).getValues();
+  const values = sheet.getRange(12, 1, lastRow - 11, 24).getValues();
 
   for (let i = 0; i < values.length; i++) {
     const rowNumber = 12 + i;
@@ -510,9 +521,9 @@ function getUnpaidTikTokGroupedRows_() {
     const caseRef = cleanTikTokValue_(row[1]);
     const clientName = cleanTikTokValue_(row[2]);
     const amount = Number(row[12]) || TIKTOK_CONFIG.RATE_PER_TIKTOK;
-    const emailSent = toBoolean_(row[13]);
-    const paid = toBoolean_(row[15]);
-    const status = cleanTikTokValue_(row[18]);
+    const emailSent = toBoolean_(row[15]);
+    const paid = toBoolean_(row[17]);
+    const status = cleanTikTokValue_(row[20]);
 
     if (!grouped[person]) {
       continue;
@@ -700,7 +711,7 @@ function markSelectedTikTokRowsAsPaid() {
   for (let i = 0; i < numRows; i++) {
     const row = startRow + i;
 
-    const rowValues = sheet.getRange(row, 1, 1, 22).getValues()[0];
+    const rowValues = sheet.getRange(row, 1, 1, 24).getValues()[0];
 
     const person = cleanTikTokValue_(rowValues[0]);
     const caseRef = cleanTikTokValue_(rowValues[1]);
@@ -710,11 +721,11 @@ function markSelectedTikTokRowsAsPaid() {
     const type = cleanTikTokValue_(rowValues[5]);
     const solicitorRef = cleanTikTokValue_(rowValues[6]);
     const amount = Number(rowValues[12]) || TIKTOK_CONFIG.RATE_PER_TIKTOK;
-    const emailSentDate = cleanTikTokValue_(rowValues[14]);
-    const alreadyPaid = toBoolean_(rowValues[15]);
-    const paymentWeek = cleanTikTokValue_(rowValues[17]);
-    const status = cleanTikTokValue_(rowValues[18]);
-    const paymentKey = cleanTikTokValue_(rowValues[20]);
+    const emailSentDate = cleanTikTokValue_(rowValues[16]);
+    const alreadyPaid = toBoolean_(rowValues[17]);
+    const paymentWeek = cleanTikTokValue_(rowValues[19]);
+    const status = cleanTikTokValue_(rowValues[20]);
+    const paymentKey = cleanTikTokValue_(rowValues[22]);
 
     if (!person || !caseRef || status === 'Excluded' || status === 'Needs Review') {
       continue;
@@ -725,9 +736,11 @@ function markSelectedTikTokRowsAsPaid() {
       continue;
     }
 
-    sheet.getRange(row, 16).setValue(true);
-    sheet.getRange(row, 17).setValue(today);
-    sheet.getRange(row, 19).setValue('Paid');
+    sheet.getRange(row, 14).setValue(0);
+    sheet.getRange(row, 15).setValue('PAID');
+    sheet.getRange(row, 18).setValue(true);
+    sheet.getRange(row, 19).setValue(today);
+    sheet.getRange(row, 21).setValue('Paid');
 
     marked++;
 
@@ -986,26 +999,28 @@ function getExistingTikTokPaymentMap_(trackerSheet) {
 
   if (trackerSheet && trackerSheet.getLastRow() >= 12) {
     const lastRow = trackerSheet.getLastRow();
-    const values = trackerSheet.getRange(12, 1, lastRow - 11, 22).getValues();
+    const headers = trackerSheet.getRange(11, 1, 1, 24).getDisplayValues()[0];
+    const hasOutstandingColumns = cleanTikTokValue_(headers[13]) === 'Outstanding This Run';
+    const values = trackerSheet.getRange(12, 1, lastRow - 11, 24).getValues();
 
     values.forEach(row => {
       const person = cleanTikTokValue_(row[0]);
       const caseRef = cleanTikTokValue_(row[1]);
       const clientName = cleanTikTokValue_(row[2]);
-      const paymentKey = cleanTikTokValue_(row[20]) || makeTikTokPaymentKey_(person, caseRef, clientName);
+      const paymentKey = cleanTikTokValue_(hasOutstandingColumns ? row[22] : row[20]) || makeTikTokPaymentKey_(person, caseRef, clientName);
 
       if (!person || !caseRef || !paymentKey) {
         return;
       }
 
       map[paymentKey] = {
-        emailSent: toBoolean_(row[13]),
-        emailSentDate: row[14],
-        paid: toBoolean_(row[15]),
-        paidDate: row[16],
-        paymentWeek: row[17],
-        status: row[18],
-        notes: row[19]
+        emailSent: toBoolean_(hasOutstandingColumns ? row[15] : row[13]),
+        emailSentDate: hasOutstandingColumns ? row[16] : row[14],
+        paid: toBoolean_(hasOutstandingColumns ? row[17] : row[15]),
+        paidDate: hasOutstandingColumns ? row[18] : row[16],
+        paymentWeek: hasOutstandingColumns ? row[19] : row[17],
+        status: hasOutstandingColumns ? row[20] : row[18],
+        notes: hasOutstandingColumns ? row[21] : row[19]
       };
     });
   }
@@ -1044,6 +1059,54 @@ function getExistingTikTokPaymentMap_(trackerSheet) {
 }
 
 
+
+function getTikTokOutstandingThisRun_(amount, paymentWeek, status, paid) {
+  const currentPaymentWeek = getNextTikTokPaymentWeekText_();
+  const cleanStatus = cleanTikTokValue_(status);
+
+  if (paid || cleanStatus === 'Paid' || cleanStatus === 'Excluded' || cleanStatus === 'Needs Review') {
+    return 0;
+  }
+
+  if (cleanTikTokValue_(paymentWeek) !== currentPaymentWeek) {
+    return 0;
+  }
+
+  return Number(amount) || 0;
+}
+
+
+function getTikTokActionNeeded_(status, outstandingThisRun, emailSent, emailSentDate, paid) {
+  const cleanStatus = cleanTikTokValue_(status);
+
+  if (cleanStatus === 'Excluded') {
+    return 'EXCLUDED';
+  }
+
+  if (cleanStatus === 'Needs Review') {
+    return 'NEEDS REVIEW';
+  }
+
+  if (paid || cleanStatus === 'Paid') {
+    return 'PAID';
+  }
+
+  if (emailSentDate) {
+    return 'EMAILED - AWAITING PAYMENT';
+  }
+
+  if (outstandingThisRun > 0 && !emailSent) {
+    return 'READY TO EMAIL';
+  }
+
+  if (outstandingThisRun > 0) {
+    return 'PAYMENT DUE';
+  }
+
+  return '';
+}
+
+
 /**
  * Summary calculation.
  *
@@ -1069,9 +1132,11 @@ function getTikTokPaymentSummary_(rows) {
   rows.forEach(row => {
     const person = cleanTikTokValue_(row[0]);
     const amount = Number(row[12]) || 0;
-    const paid = toBoolean_(row[15]);
-    const status = cleanTikTokValue_(row[18]);
-    const paymentWeek = cleanTikTokValue_(row[17]);
+    const outstandingThisRun = Number(row[13]) || 0;
+    const actionNeeded = cleanTikTokValue_(row[14]);
+    const paid = toBoolean_(row[17]);
+    const status = cleanTikTokValue_(row[20]);
+    const paymentWeek = cleanTikTokValue_(row[19]);
 
     if (status === 'Needs Review') {
       summary.NeedsReview.count++;
@@ -1105,10 +1170,15 @@ function getTikTokPaymentSummary_(rows) {
       summary.Total.paidAmount += amount;
     } else {
       summary[person].unpaidCount++;
-      summary[person].balance += amount;
+      summary[person].balance += outstandingThisRun;
 
       summary.Total.unpaidCount++;
-      summary.Total.balance += amount;
+      summary.Total.balance += outstandingThisRun;
+
+      if (actionNeeded === 'READY TO EMAIL') {
+        summary[person].readyToEmailCount++;
+        summary.Total.readyToEmailCount++;
+      }
     }
   });
 
@@ -1162,7 +1232,8 @@ function createEmptyPaymentSummary_() {
     paidAmount: 0,
     balance: 0,
     paidCount: 0,
-    unpaidCount: 0
+    unpaidCount: 0,
+    readyToEmailCount: 0
   };
 }
 
@@ -1180,8 +1251,8 @@ function sortTikTokRows_(rows) {
   };
 
   rows.sort((a, b) => {
-    const statusA = statusOrder[cleanTikTokValue_(a[18])] || 99;
-    const statusB = statusOrder[cleanTikTokValue_(b[18])] || 99;
+    const statusA = statusOrder[cleanTikTokValue_(a[20])] || 99;
+    const statusB = statusOrder[cleanTikTokValue_(b[20])] || 99;
 
     if (statusA !== statusB) {
       return statusA - statusB;
@@ -1247,8 +1318,8 @@ function applyDuplicatePaymentKeySafety_(rows) {
   const counts = {};
 
   rows.forEach(row => {
-    const paymentKey = cleanTikTokValue_(row[20]);
-    const status = cleanTikTokValue_(row[18]);
+    const paymentKey = cleanTikTokValue_(row[22]);
+    const status = cleanTikTokValue_(row[20]);
 
     if (!paymentKey || status === 'Excluded') {
       return;
@@ -1258,17 +1329,19 @@ function applyDuplicatePaymentKeySafety_(rows) {
   });
 
   rows.forEach(row => {
-    const paymentKey = cleanTikTokValue_(row[20]);
-    const status = cleanTikTokValue_(row[18]);
-    const paid = toBoolean_(row[15]);
+    const paymentKey = cleanTikTokValue_(row[22]);
+    const status = cleanTikTokValue_(row[20]);
+    const paid = toBoolean_(row[17]);
 
     if (!paymentKey || status === 'Excluded' || paid) {
       return;
     }
 
     if ((counts[paymentKey] || 0) > 1) {
-      row[18] = 'Needs Review';
-      row[19] = 'Duplicate payment key found - check before paying';
+      row[13] = 0;
+      row[14] = 'NEEDS REVIEW';
+      row[20] = 'Needs Review';
+      row[21] = 'Duplicate payment key found - check before paying';
       row[11] = 0;
       row[12] = 0;
     }
@@ -1282,7 +1355,7 @@ function applyDuplicatePaymentKeySafety_(rows) {
 function formatTikTokTracker_(sheet, rowCount) {
   sheet.setFrozenRows(11);
 
-  sheet.getRange('A1:V1')
+  sheet.getRange('A1:X1')
     .merge()
     .setFontWeight('bold')
     .setFontSize(18)
@@ -1327,6 +1400,15 @@ function formatTikTokTracker_(sheet, rowCount) {
 
   sheet.getRange('M4:P4')
     .merge()
+    .setValue('OUTSTANDING')
+    .setFontWeight('bold')
+    .setFontSize(14)
+    .setHorizontalAlignment('center')
+    .setBackground('#b45f06')
+    .setFontColor('#ffffff');
+
+  sheet.getRange('Q4:T4')
+    .merge()
     .setValue('ISSUES')
     .setFontWeight('bold')
     .setFontSize(14)
@@ -1334,7 +1416,7 @@ function formatTikTokTracker_(sheet, rowCount) {
     .setBackground('#666666')
     .setFontColor('#ffffff');
 
-  sheet.getRange('Q4:T4')
+  sheet.getRange('U4:X4')
     .merge()
     .setValue('PAID HISTORY')
     .setFontWeight('bold')
@@ -1342,6 +1424,7 @@ function formatTikTokTracker_(sheet, rowCount) {
     .setHorizontalAlignment('center')
     .setBackground('#783f04')
     .setFontColor('#ffffff');
+
 
   sheet.getRange('A5:D8')
     .setBackground('#eaf7e8')
@@ -1356,10 +1439,14 @@ function formatTikTokTracker_(sheet, rowCount) {
     .setBorder(true, true, true, true, true, true);
 
   sheet.getRange('M5:P8')
-    .setBackground('#eeeeee')
+    .setBackground('#fff2cc')
     .setBorder(true, true, true, true, true, true);
 
   sheet.getRange('Q5:T8')
+    .setBackground('#eeeeee')
+    .setBorder(true, true, true, true, true, true);
+
+  sheet.getRange('U5:X8')
     .setBackground('#fff2cc')
     .setBorder(true, true, true, true, true, true);
 
@@ -1368,68 +1455,67 @@ function formatTikTokTracker_(sheet, rowCount) {
   sheet.getRange('I5:I8').setFontWeight('bold');
   sheet.getRange('M5:M8').setFontWeight('bold');
   sheet.getRange('Q5:Q8').setFontWeight('bold');
+  sheet.getRange('U5:U8').setFontWeight('bold');
 
   sheet.getRange('B6:B8').setNumberFormat('£#,##0.00');
   sheet.getRange('F6:F8').setNumberFormat('£#,##0.00');
   sheet.getRange('J6:J8').setNumberFormat('£#,##0.00');
-  sheet.getRange('R5:R8').setNumberFormat('£#,##0.00');
+  sheet.getRange('N5:N7').setNumberFormat('£#,##0.00');
+  sheet.getRange('V5:V8').setNumberFormat('£#,##0.00');
 
-  sheet.getRange('A11:V11')
+  sheet.getRange('A11:X11')
     .setFontWeight('bold')
     .setBackground('#d9ead3')
     .setBorder(true, true, true, true, true, true)
     .setHorizontalAlignment('center');
 
   if (rowCount > 0) {
-    sheet.getRange(12, 1, rowCount, 22)
+    sheet.getRange(12, 1, rowCount, 24)
       .setBorder(true, true, true, true, true, true)
       .setVerticalAlignment('middle');
 
-    sheet.getRange(12, 12, rowCount, 2)
+    sheet.getRange(12, 12, rowCount, 3)
       .setNumberFormat('£#,##0.00');
 
-    const values = sheet.getRange(12, 1, rowCount, 22).getValues();
+    const values = sheet.getRange(12, 1, rowCount, 24).getValues();
 
     for (let i = 0; i < values.length; i++) {
       const rowNumber = 12 + i;
 
       const person = values[i][0];
       const matchType = values[i][9];
-      const emailSent = toBoolean_(values[i][13]);
-      const paid = toBoolean_(values[i][15]);
-      const status = cleanTikTokValue_(values[i][18]);
+      const outstandingThisRun = Number(values[i][13]) || 0;
+      const actionNeeded = cleanTikTokValue_(values[i][14]);
+      const emailSent = toBoolean_(values[i][15]);
+      const paid = toBoolean_(values[i][17]);
+      const status = cleanTikTokValue_(values[i][20]);
 
-      if (status === 'Needs Review') {
-        sheet.getRange(rowNumber, 1, 1, 22).setBackground('#f4cccc');
-        sheet.getRange(rowNumber, 19, 1, 2).setFontWeight('bold');
+      if (actionNeeded === 'NEEDS REVIEW') {
+        sheet.getRange(rowNumber, 1, 1, 24).setBackground('#f4cccc');
+        sheet.getRange(rowNumber, 15, 1, 8).setFontWeight('bold');
         continue;
       }
 
-      if (status === 'Excluded') {
-        sheet.getRange(rowNumber, 1, 1, 22).setBackground('#d9d9d9');
-        sheet.getRange(rowNumber, 19, 1, 2).setFontWeight('bold');
+      if (actionNeeded === 'EXCLUDED') {
+        sheet.getRange(rowNumber, 1, 1, 24).setBackground('#d9d9d9');
+        sheet.getRange(rowNumber, 15, 1, 8).setFontWeight('bold');
         continue;
       }
 
-      if (person === 'Yusuf') {
-        sheet.getRange(rowNumber, 1, 1, 22).setBackground('#eaf7e8');
+      if (actionNeeded === 'READY TO EMAIL') {
+        sheet.getRange(rowNumber, 1, 1, 24).setBackground('#cfe2f3');
+      } else if (outstandingThisRun > 0 || actionNeeded === 'PAYMENT DUE' || actionNeeded === 'EMAILED - AWAITING PAYMENT') {
+        sheet.getRange(rowNumber, 1, 1, 24).setBackground('#fce8b2');
+      } else if (paid || actionNeeded === 'PAID') {
+        sheet.getRange(rowNumber, 1, 1, 24).setBackground('#d9ead3');
+      } else if (person === 'Yusuf') {
+        sheet.getRange(rowNumber, 1, 1, 24).setBackground('#eaf7e8');
+      } else if (person === 'Suleman') {
+        sheet.getRange(rowNumber, 1, 1, 24).setBackground('#fff0df');
       }
 
-      if (person === 'Suleman') {
-        sheet.getRange(rowNumber, 1, 1, 22).setBackground('#fff0df');
-      }
-
-      if (status === 'Unpaid') {
-        sheet.getRange(rowNumber, 19).setBackground('#fce8b2').setFontWeight('bold');
-      }
-
-      if (status === 'Email Sent') {
-        sheet.getRange(rowNumber, 19).setBackground('#cfe2f3').setFontWeight('bold');
-      }
-
-      if (status === 'Paid') {
-        sheet.getRange(rowNumber, 19).setBackground('#b6d7a8').setFontWeight('bold');
-      }
+      sheet.getRange(rowNumber, 14, 1, 2).setFontWeight('bold');
+      sheet.getRange(rowNumber, 21).setFontWeight('bold');
 
       if (matchType === 'Near Match') {
         sheet.getRange(rowNumber, 10, 1, 2)
@@ -1438,20 +1524,20 @@ function formatTikTokTracker_(sheet, rowCount) {
       }
 
       if (emailSent) {
-        sheet.getRange(rowNumber, 14, 1, 2)
+        sheet.getRange(rowNumber, 16, 1, 2)
           .setBackground('#cfe2f3')
           .setFontWeight('bold');
       }
 
       if (paid) {
-        sheet.getRange(rowNumber, 16, 1, 2)
+        sheet.getRange(rowNumber, 18, 1, 2)
           .setBackground('#b6d7a8')
           .setFontWeight('bold');
       }
     }
   }
 
-  sheet.autoResizeColumns(1, 22);
+  sheet.autoResizeColumns(1, 24);
 
   sheet.setColumnWidth(1, 110);
   sheet.setColumnWidth(2, 90);
@@ -1461,20 +1547,20 @@ function formatTikTokTracker_(sheet, rowCount) {
   sheet.setColumnWidth(6, 140);
   sheet.setColumnWidth(7, 140);
   sheet.setColumnWidth(12, 70);
-  sheet.setColumnWidth(13, 95);
-  sheet.setColumnWidth(14, 95);
-  sheet.setColumnWidth(15, 110);
-  sheet.setColumnWidth(16, 70);
-  sheet.setColumnWidth(17, 90);
-  sheet.setColumnWidth(18, 180);
-  sheet.setColumnWidth(19, 110);
-  sheet.setColumnWidth(20, 220);
-  sheet.setColumnWidth(17, 140);
-  sheet.setColumnWidth(18, 120);
+  sheet.setColumnWidth(13, 105);
+  sheet.setColumnWidth(14, 165);
+  sheet.setColumnWidth(15, 210);
+  sheet.setColumnWidth(16, 95);
+  sheet.setColumnWidth(17, 115);
+  sheet.setColumnWidth(18, 75);
+  sheet.setColumnWidth(19, 95);
+  sheet.setColumnWidth(20, 230);
+  sheet.setColumnWidth(21, 145);
+  sheet.setColumnWidth(22, 260);
 
   try {
     sheet.hideColumns(8, 4);
-    sheet.hideColumns(21, 2);
+    sheet.hideColumns(23, 2);
   } catch (err) {}
 
   if (sheet.getFilter()) {
@@ -1482,7 +1568,7 @@ function formatTikTokTracker_(sheet, rowCount) {
   }
 
   const filterLastRow = Math.max(12, 11 + rowCount);
-  sheet.getRange(11, 1, filterLastRow - 10, 22).createFilter();
+  sheet.getRange(11, 1, filterLastRow - 10, 24).createFilter();
 }
 
 
