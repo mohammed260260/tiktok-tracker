@@ -75,6 +75,11 @@ const TIKTOK_CONFIG = {
     '#ea4335'
   ],
 
+  TRACKER_HEADER_ROW: 22,
+  TRACKER_DATA_START_ROW: 23,
+  DUE_THIS_RUN_START_ROW: 10,
+  DUE_THIS_RUN_MAX_ROWS: 10,
+
   EXCLUDE_KEYWORDS: [
     'cancel',
     'cancelled',
@@ -192,13 +197,13 @@ function updateTikTokTracker() {
       const old = existingPaymentMap[paymentKey] || {};
 
       const paid = toBoolean_(old.paid);
-      const emailSent = toBoolean_(old.emailSent);
+      const emailSentDate = cleanTikTokValue_(old.emailSentDate);
 
       let status = 'Unpaid';
 
       if (paid) {
         status = 'Paid';
-      } else if (emailSent) {
+      } else if (emailSentDate) {
         status = 'Email Sent';
       }
 
@@ -275,13 +280,13 @@ function updateTikTokTracker() {
 function buildTrackerRow_(data) {
   const old = data.old || {};
   const paid = toBoolean_(old.paid);
-  const emailSent = toBoolean_(old.emailSent);
+  const sendEmail = toBoolean_(old.sendEmail);
   const emailSentDate = cleanTikTokValue_(old.emailSentDate);
   const paymentWeek = cleanTikTokValue_(data.paymentWeek);
   const status = cleanTikTokValue_(data.status);
   const amount = Number(data.amount) || 0;
   const outstandingThisRun = getTikTokOutstandingThisRun_(amount, paymentWeek, status, paid);
-  const actionNeeded = getTikTokActionNeeded_(status, outstandingThisRun, emailSent, emailSentDate, paid);
+  const actionNeeded = getTikTokActionNeeded_(status, outstandingThisRun, sendEmail, emailSentDate, paid);
 
   const paymentKey = data.person
     ? makeTikTokPaymentKey_(data.person, data.caseRef, data.clientName)
@@ -303,7 +308,7 @@ function buildTrackerRow_(data) {
     amount,
     outstandingThisRun,
     actionNeeded,
-    emailSent,
+    sendEmail,
     emailSentDate,
     paid,
     cleanTikTokValue_(old.paidDate),
@@ -323,6 +328,9 @@ function buildTikTokTracker_(sheet, rows) {
   const summary = getTikTokPaymentSummary_(rows);
   const nearMatchCount = rows.filter(row => row[9] === 'Near Match').length;
   const nextPaymentWeek = getNextTikTokPaymentWeekText_();
+  const dueThisRunRows = rows
+    .filter(row => (Number(row[13]) || 0) > 0)
+    .slice(0, TIKTOK_CONFIG.DUE_THIS_RUN_MAX_ROWS);
 
   const now = Utilities.formatDate(
     new Date(),
@@ -339,10 +347,34 @@ function buildTikTokTracker_(sheet, rows) {
     ['Completed This Run', summary.Yusuf.completed, '', '', 'Completed This Run', summary.Suleman.completed, '', '', 'Completed This Run', summary.Total.completed, '', '', 'Yusuf Outstanding This Run', summary.Yusuf.balance, '', '', 'Needs Review', summary.NeedsReview.count, '', '', 'Lifetime Paid', summary.History.totalPaid, '', ''],
     ['Total Owed This Run', summary.Yusuf.totalOwed, '', '', 'Total Owed This Run', summary.Suleman.totalOwed, '', '', 'Total Owed This Run', summary.Total.totalOwed, '', '', 'Suleman Outstanding This Run', summary.Suleman.balance, '', '', 'Excluded', summary.Excluded.count, '', '', 'Paid Records', summary.History.totalPaidCount, '', ''],
     ['Paid This Run', summary.Yusuf.paidAmount, '', '', 'Paid This Run', summary.Suleman.paidAmount, '', '', 'Paid This Run', summary.Total.paidAmount, '', '', 'Total Outstanding This Run', summary.Total.balance, '', '', 'Near Matches', nearMatchCount, '', '', 'Yusuf Lifetime', summary.History.Yusuf.totalPaid, '', ''],
-    ['Balance Due This Run', summary.Yusuf.balance, '', '', 'Balance Due This Run', summary.Suleman.balance, '', '', 'Balance Due This Run', summary.Total.balance, '', '', 'Rows Awaiting Payment', summary.Total.unpaidCount, 'Rows Ready To Email', summary.Total.readyToEmailCount, '', '', '', '', 'Suleman Lifetime', summary.History.Suleman.totalPaid, '', ''],
+    ['Balance Due This Run', summary.Yusuf.balance, '', '', 'Balance Due This Run', summary.Suleman.balance, '', '', 'Balance Due This Run', summary.Total.balance, '', '', 'Rows Awaiting Payment', summary.Total.awaitingPaymentCount, 'Rows Ready To Email', summary.Total.readyToEmailCount, 'Rows Payment Due', summary.Total.paymentDueCount, '', '', 'Suleman Lifetime', summary.History.Suleman.totalPaid, '', ''],
     ['', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
-    ['', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
+    ['DUE THIS RUN', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
+    ['TikTok By', 'Case Ref', 'Client Name', 'Amount Owed / Outstanding This Run', 'Action Needed', 'Send Email?', 'Email Sent Date', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '']
+  ];
 
+  if (dueThisRunRows.length > 0) {
+    dueThisRunRows.forEach(row => {
+      topRows.push([
+        row[0],
+        row[1],
+        row[2],
+        row[13],
+        row[14],
+        row[15],
+        row[16],
+        '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''
+      ]);
+    });
+  } else {
+    topRows.push(['No outstanding rows this run', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '']);
+  }
+
+  while (topRows.length < TIKTOK_CONFIG.TRACKER_HEADER_ROW - 1) {
+    topRows.push(['', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '']);
+  }
+
+  topRows.push(
     [
       'TikTok By',
       'Case Ref',
@@ -359,7 +391,7 @@ function buildTikTokTracker_(sheet, rows) {
       'Amount Owed',
       'Outstanding This Run',
       'Action Needed',
-      'Email Sent?',
+      'Send Email?',
       'Email Sent Date',
       'Paid?',
       'Paid Date',
@@ -369,15 +401,15 @@ function buildTikTokTracker_(sheet, rows) {
       'Payment Key',
       'Last Seen'
     ]
-  ];
+  );
 
   sheet.getRange(1, 1, topRows.length, topRows[0].length).setValues(topRows);
 
   if (rows.length > 0) {
-    sheet.getRange(12, 1, rows.length, rows[0].length).setValues(rows);
+    sheet.getRange(TIKTOK_CONFIG.TRACKER_DATA_START_ROW, 1, rows.length, rows[0].length).setValues(rows);
 
-    sheet.getRange(12, 16, rows.length, 1).insertCheckboxes();
-    sheet.getRange(12, 18, rows.length, 1).insertCheckboxes();
+    sheet.getRange(TIKTOK_CONFIG.TRACKER_DATA_START_ROW, 16, rows.length, 1).insertCheckboxes();
+    sheet.getRange(TIKTOK_CONFIG.TRACKER_DATA_START_ROW, 18, rows.length, 1).insertCheckboxes();
   }
 
   formatTikTokTracker_(sheet, rows.length);
@@ -507,33 +539,35 @@ function getUnpaidTikTokGroupedRows_() {
     Suleman: []
   };
 
-  if (lastRow < 12) {
+  if (lastRow < TIKTOK_CONFIG.TRACKER_DATA_START_ROW) {
     return grouped;
   }
 
-  const values = sheet.getRange(12, 1, lastRow - 11, 24).getValues();
+  const values = sheet.getRange(TIKTOK_CONFIG.TRACKER_DATA_START_ROW, 1, lastRow - TIKTOK_CONFIG.TRACKER_HEADER_ROW, 24).getValues();
 
   for (let i = 0; i < values.length; i++) {
-    const rowNumber = 12 + i;
+    const rowNumber = TIKTOK_CONFIG.TRACKER_DATA_START_ROW + i;
     const row = values[i];
 
     const person = cleanTikTokValue_(row[0]);
     const caseRef = cleanTikTokValue_(row[1]);
     const clientName = cleanTikTokValue_(row[2]);
     const amount = Number(row[12]) || TIKTOK_CONFIG.RATE_PER_TIKTOK;
-    const emailSent = toBoolean_(row[15]);
+    const outstandingThisRun = Number(row[13]) || 0;
+    const sendEmail = toBoolean_(row[15]);
+    const emailSentDate = cleanTikTokValue_(row[16]);
     const paid = toBoolean_(row[17]);
-    const status = cleanTikTokValue_(row[20]);
+    const actionNeeded = cleanTikTokValue_(row[14]);
 
     if (!grouped[person]) {
       continue;
     }
 
-    if (status !== 'Unpaid') {
+    if (!sendEmail || emailSentDate || paid) {
       continue;
     }
 
-    if (emailSent || paid) {
+    if (actionNeeded === 'EXCLUDED' || actionNeeded === 'NEEDS REVIEW' || outstandingThisRun <= 0) {
       continue;
     }
 
@@ -692,7 +726,7 @@ function markSelectedTikTokRowsAsPaid() {
   const startRow = range.getRow();
   const numRows = range.getNumRows();
 
-  if (startRow < 12) {
+  if (startRow < TIKTOK_CONFIG.TRACKER_DATA_START_ROW) {
     SpreadsheetApp.getUi().alert('Please select actual TikTok rows, not the dashboard/header rows.');
     return;
   }
@@ -922,14 +956,9 @@ function nightlyTikTokTrackerUpdate() {
  * Payment email check.
  */
 function runTikTokPaymentEmailsIfDueToday() {
-  const today = dateOnly_(new Date());
-  const dueDate = dateOnly_(getCurrentMonthTikTokPaymentRunDate_());
-
-  if (today.getTime() !== dueDate.getTime()) {
-    return;
-  }
-
-  sendMonthlyTikTokPaymentEmails();
+  // Safety guard: scheduled triggers must never send real payment emails.
+  // Real payment emails are only sent by manually running sendMonthlyTikTokPaymentEmails().
+  nightlyTikTokTrackerUpdate();
 }
 
 
@@ -956,14 +985,8 @@ function createTikTokNightlyAndPaymentTriggers() {
     .atHour(23)
     .create();
 
-  ScriptApp.newTrigger('runTikTokPaymentEmailsIfDueToday')
-    .timeBased()
-    .everyDays(1)
-    .atHour(22)
-    .create();
-
   SpreadsheetApp.getUi().alert(
-    'TikTok triggers created.\n\nTracker update: every night around 11pm.\nPayment email check: every night around 10pm, only sends 7 days before month end.'
+    'TikTok triggers created.\n\nTracker update: every night around 11pm.\nNo scheduled trigger sends real payment emails. Use sendMonthlyTikTokPaymentEmails() manually for month-end emails.'
   );
 }
 
@@ -992,6 +1015,76 @@ function removeTikTokTriggers() {
 
 
 /**
+ * Adds TikTok helpers to the spreadsheet menu.
+ */
+function onOpen() {
+  SpreadsheetApp.getUi()
+    .createMenu('TikTok')
+    .addItem('Update TikTok Tracker', 'updateTikTokTracker')
+    .addSeparator()
+    .addItem('Show Outstanding This Run', 'filterTikTokOutstandingThisRun')
+    .addItem('Clear Tracker Filters', 'clearTikTokTrackerFilters')
+    .addSeparator()
+    .addItem('Send Monthly Payment Emails', 'sendMonthlyTikTokPaymentEmails')
+    .addItem('Send Test Payment Summary To Me', 'sendTikTokPaymentSummaryTestToMe')
+    .addSeparator()
+    .addItem('Mark Selected Rows As Paid', 'markSelectedTikTokRowsAsPaid')
+    .addToUi();
+}
+
+
+/**
+ * Filters the main tracker to rows requiring attention this run.
+ */
+function filterTikTokOutstandingThisRun() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(TIKTOK_CONFIG.TRACKER_SHEET_NAME);
+
+  if (!sheet) {
+    SpreadsheetApp.getUi().alert('TikTok Tracker not found.');
+    return;
+  }
+
+  clearTikTokTrackerFilters();
+
+  const lastRow = Math.max(sheet.getLastRow(), TIKTOK_CONFIG.TRACKER_DATA_START_ROW);
+  const filter = sheet
+    .getRange(TIKTOK_CONFIG.TRACKER_HEADER_ROW, 1, lastRow - TIKTOK_CONFIG.TRACKER_HEADER_ROW + 1, 24)
+    .createFilter();
+
+  const actionNeededCriteria = SpreadsheetApp.newFilterCriteria()
+    .setVisibleValues([
+      'READY TO EMAIL',
+      'PAYMENT DUE',
+      'EMAILED - AWAITING PAYMENT'
+    ])
+    .build();
+
+  filter.setColumnFilterCriteria(15, actionNeededCriteria);
+}
+
+
+/**
+ * Clears tracker filters and shows all tracker rows.
+ */
+function clearTikTokTrackerFilters() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(TIKTOK_CONFIG.TRACKER_SHEET_NAME);
+
+  if (!sheet) {
+    SpreadsheetApp.getUi().alert('TikTok Tracker not found.');
+    return;
+  }
+
+  const filter = sheet.getFilter();
+
+  if (filter) {
+    filter.remove();
+  }
+}
+
+
+/**
  * Reads existing tracker payment/email state before rebuild.
  */
 function getExistingTikTokPaymentMap_(trackerSheet) {
@@ -999,9 +1092,18 @@ function getExistingTikTokPaymentMap_(trackerSheet) {
 
   if (trackerSheet && trackerSheet.getLastRow() >= 12) {
     const lastRow = trackerSheet.getLastRow();
-    const headers = trackerSheet.getRange(11, 1, 1, 24).getDisplayValues()[0];
+    let headerRow = TIKTOK_CONFIG.TRACKER_HEADER_ROW;
+    let dataStartRow = TIKTOK_CONFIG.TRACKER_DATA_START_ROW;
+    let headers = trackerSheet.getRange(headerRow, 1, 1, 24).getDisplayValues()[0];
+
+    if (cleanTikTokValue_(headers[0]) !== 'TikTok By') {
+      headerRow = 11;
+      dataStartRow = 12;
+      headers = trackerSheet.getRange(headerRow, 1, 1, 24).getDisplayValues()[0];
+    }
+
     const hasOutstandingColumns = cleanTikTokValue_(headers[13]) === 'Outstanding This Run';
-    const values = trackerSheet.getRange(12, 1, lastRow - 11, 24).getValues();
+    const values = trackerSheet.getRange(dataStartRow, 1, lastRow - headerRow, 24).getValues();
 
     values.forEach(row => {
       const person = cleanTikTokValue_(row[0]);
@@ -1014,7 +1116,7 @@ function getExistingTikTokPaymentMap_(trackerSheet) {
       }
 
       map[paymentKey] = {
-        emailSent: toBoolean_(hasOutstandingColumns ? row[15] : row[13]),
+        sendEmail: toBoolean_(hasOutstandingColumns ? row[15] : row[13]),
         emailSentDate: hasOutstandingColumns ? row[16] : row[14],
         paid: toBoolean_(hasOutstandingColumns ? row[17] : row[15]),
         paidDate: hasOutstandingColumns ? row[18] : row[16],
@@ -1044,7 +1146,7 @@ function getExistingTikTokPaymentMap_(trackerSheet) {
       }
 
       map[paymentKey] = {
-        emailSent: true,
+        sendEmail: false,
         emailSentDate: emailSentDate,
         paid: true,
         paidDate: paidDate,
@@ -1076,7 +1178,7 @@ function getTikTokOutstandingThisRun_(amount, paymentWeek, status, paid) {
 }
 
 
-function getTikTokActionNeeded_(status, outstandingThisRun, emailSent, emailSentDate, paid) {
+function getTikTokActionNeeded_(status, outstandingThisRun, sendEmail, emailSentDate, paid) {
   const cleanStatus = cleanTikTokValue_(status);
 
   if (cleanStatus === 'Excluded') {
@@ -1095,12 +1197,12 @@ function getTikTokActionNeeded_(status, outstandingThisRun, emailSent, emailSent
     return 'EMAILED - AWAITING PAYMENT';
   }
 
-  if (outstandingThisRun > 0 && !emailSent) {
-    return 'READY TO EMAIL';
+  if (outstandingThisRun > 0 && !sendEmail && !emailSentDate) {
+    return 'PAYMENT DUE';
   }
 
-  if (outstandingThisRun > 0) {
-    return 'PAYMENT DUE';
+  if (outstandingThisRun > 0 && sendEmail && !emailSentDate) {
+    return 'READY TO EMAIL';
   }
 
   return '';
@@ -1169,15 +1271,19 @@ function getTikTokPaymentSummary_(rows) {
       summary.Total.paidCount++;
       summary.Total.paidAmount += amount;
     } else {
-      summary[person].unpaidCount++;
       summary[person].balance += outstandingThisRun;
 
-      summary.Total.unpaidCount++;
       summary.Total.balance += outstandingThisRun;
 
       if (actionNeeded === 'READY TO EMAIL') {
         summary[person].readyToEmailCount++;
         summary.Total.readyToEmailCount++;
+      } else if (actionNeeded === 'PAYMENT DUE') {
+        summary[person].paymentDueCount++;
+        summary.Total.paymentDueCount++;
+      } else if (actionNeeded === 'EMAILED - AWAITING PAYMENT') {
+        summary[person].awaitingPaymentCount++;
+        summary.Total.awaitingPaymentCount++;
       }
     }
   });
@@ -1232,8 +1338,9 @@ function createEmptyPaymentSummary_() {
     paidAmount: 0,
     balance: 0,
     paidCount: 0,
-    unpaidCount: 0,
-    readyToEmailCount: 0
+    readyToEmailCount: 0,
+    paymentDueCount: 0,
+    awaitingPaymentCount: 0
   };
 }
 
@@ -1353,7 +1460,7 @@ function applyDuplicatePaymentKeySafety_(rows) {
  * Formatting.
  */
 function formatTikTokTracker_(sheet, rowCount) {
-  sheet.setFrozenRows(11);
+  sheet.setFrozenRows(TIKTOK_CONFIG.TRACKER_HEADER_ROW);
 
   sheet.getRange('A1:X1')
     .merge()
@@ -1456,6 +1563,8 @@ function formatTikTokTracker_(sheet, rowCount) {
   sheet.getRange('M5:M8').setFontWeight('bold');
   sheet.getRange('Q5:Q8').setFontWeight('bold');
   sheet.getRange('U5:U8').setFontWeight('bold');
+  sheet.getRange('Q8:Q8').setFontWeight('bold');
+  sheet.getRange('S8:S8').setFontWeight('bold');
 
   sheet.getRange('B6:B8').setNumberFormat('£#,##0.00');
   sheet.getRange('F6:F8').setNumberFormat('£#,##0.00');
@@ -1463,30 +1572,61 @@ function formatTikTokTracker_(sheet, rowCount) {
   sheet.getRange('N5:N7').setNumberFormat('£#,##0.00');
   sheet.getRange('V5:V8').setNumberFormat('£#,##0.00');
 
-  sheet.getRange('A11:X11')
+  sheet.getRange('A10:X10')
+    .merge()
+    .setFontWeight('bold')
+    .setFontSize(14)
+    .setHorizontalAlignment('center')
+    .setBackground('#7f1d1d')
+    .setFontColor('#ffffff')
+    .setBorder(true, true, true, true, true, true);
+
+  sheet.getRange('A11:G11')
+    .setFontWeight('bold')
+    .setBackground('#f4cccc')
+    .setHorizontalAlignment('center')
+    .setBorder(true, true, true, true, true, true);
+
+  sheet.getRange(
+    TIKTOK_CONFIG.DUE_THIS_RUN_START_ROW + 2,
+    1,
+    TIKTOK_CONFIG.DUE_THIS_RUN_MAX_ROWS,
+    7
+  )
+    .setBackground('#fff2cc')
+    .setBorder(true, true, true, true, true, true);
+
+  sheet.getRange(
+    TIKTOK_CONFIG.DUE_THIS_RUN_START_ROW + 2,
+    4,
+    TIKTOK_CONFIG.DUE_THIS_RUN_MAX_ROWS,
+    1
+  ).setNumberFormat('£#,##0.00');
+
+  sheet.getRange(TIKTOK_CONFIG.TRACKER_HEADER_ROW, 1, 1, 24)
     .setFontWeight('bold')
     .setBackground('#d9ead3')
     .setBorder(true, true, true, true, true, true)
     .setHorizontalAlignment('center');
 
   if (rowCount > 0) {
-    sheet.getRange(12, 1, rowCount, 24)
+    sheet.getRange(TIKTOK_CONFIG.TRACKER_DATA_START_ROW, 1, rowCount, 24)
       .setBorder(true, true, true, true, true, true)
       .setVerticalAlignment('middle');
 
-    sheet.getRange(12, 12, rowCount, 3)
+    sheet.getRange(TIKTOK_CONFIG.TRACKER_DATA_START_ROW, 12, rowCount, 3)
       .setNumberFormat('£#,##0.00');
 
-    const values = sheet.getRange(12, 1, rowCount, 24).getValues();
+    const values = sheet.getRange(TIKTOK_CONFIG.TRACKER_DATA_START_ROW, 1, rowCount, 24).getValues();
 
     for (let i = 0; i < values.length; i++) {
-      const rowNumber = 12 + i;
+      const rowNumber = TIKTOK_CONFIG.TRACKER_DATA_START_ROW + i;
 
       const person = values[i][0];
       const matchType = values[i][9];
       const outstandingThisRun = Number(values[i][13]) || 0;
       const actionNeeded = cleanTikTokValue_(values[i][14]);
-      const emailSent = toBoolean_(values[i][15]);
+      const sendEmail = toBoolean_(values[i][15]);
       const paid = toBoolean_(values[i][17]);
       const status = cleanTikTokValue_(values[i][20]);
 
@@ -1523,7 +1663,7 @@ function formatTikTokTracker_(sheet, rowCount) {
           .setFontWeight('bold');
       }
 
-      if (emailSent) {
+      if (sendEmail) {
         sheet.getRange(rowNumber, 16, 1, 2)
           .setBackground('#cfe2f3')
           .setFontWeight('bold');
@@ -1567,8 +1707,8 @@ function formatTikTokTracker_(sheet, rowCount) {
     sheet.getFilter().remove();
   }
 
-  const filterLastRow = Math.max(12, 11 + rowCount);
-  sheet.getRange(11, 1, filterLastRow - 10, 24).createFilter();
+  const filterLastRow = Math.max(TIKTOK_CONFIG.TRACKER_DATA_START_ROW, TIKTOK_CONFIG.TRACKER_HEADER_ROW + rowCount);
+  sheet.getRange(TIKTOK_CONFIG.TRACKER_HEADER_ROW, 1, filterLastRow - TIKTOK_CONFIG.TRACKER_HEADER_ROW + 1, 24).createFilter();
 }
 
 
