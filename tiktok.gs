@@ -119,6 +119,7 @@ function updateTikTokTracker() {
     trackerSheet.showColumns(1, 24);
   } catch (err) {}
 
+  trackerSheet.getRange(1, 1, trackerSheet.getMaxRows(), trackerSheet.getMaxColumns()).clearDataValidations();
   trackerSheet.clear();
 
   const lastRow = mainSheet.getLastRow();
@@ -350,7 +351,7 @@ function buildTikTokTracker_(sheet, rows) {
     ['Balance Due This Run', summary.Yusuf.balance, '', '', 'Balance Due This Run', summary.Suleman.balance, '', '', 'Balance Due This Run', summary.Total.balance, '', '', 'Rows Awaiting Payment', summary.Total.awaitingPaymentCount, 'Rows Ready To Email', summary.Total.readyToEmailCount, 'Rows Payment Due', summary.Total.paymentDueCount, '', '', 'Suleman Lifetime', summary.History.Suleman.totalPaid, '', ''],
     ['', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
     ['DUE THIS RUN', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
-    ['TikTok By', 'Case Ref', 'Client Name', 'Amount Owed / Outstanding This Run', 'Action Needed', 'Send Email?', 'Email Sent Date', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '']
+    ['TikTok By', 'Case Ref', 'Client Name', 'Outstanding', 'Action Needed', 'Send Email?', 'Email Sent Date', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '']
   ];
 
   if (dueThisRunRows.length > 0) {
@@ -361,7 +362,7 @@ function buildTikTokTracker_(sheet, rows) {
         row[2],
         row[13],
         row[14],
-        row[15],
+        toBoolean_(row[15]) ? 'Yes' : 'No',
         row[16],
         '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''
       ]);
@@ -404,6 +405,7 @@ function buildTikTokTracker_(sheet, rows) {
   );
 
   sheet.getRange(1, 1, topRows.length, topRows[0].length).setValues(topRows);
+  sheet.getRange(1, 1, TIKTOK_CONFIG.TRACKER_HEADER_ROW, 24).clearDataValidations();
 
   if (rows.length > 0) {
     sheet.getRange(TIKTOK_CONFIG.TRACKER_DATA_START_ROW, 1, rows.length, rows[0].length).setValues(rows);
@@ -1572,7 +1574,7 @@ function formatTikTokTracker_(sheet, rowCount) {
   sheet.getRange('N5:N7').setNumberFormat('£#,##0.00');
   sheet.getRange('V5:V8').setNumberFormat('£#,##0.00');
 
-  sheet.getRange('A10:X10')
+  sheet.getRange('A10:G10')
     .merge()
     .setFontWeight('bold')
     .setFontSize(14)
@@ -1679,13 +1681,13 @@ function formatTikTokTracker_(sheet, rowCount) {
 
   sheet.autoResizeColumns(1, 24);
 
-  sheet.setColumnWidth(1, 110);
-  sheet.setColumnWidth(2, 90);
-  sheet.setColumnWidth(3, 210);
-  sheet.setColumnWidth(4, 105);
-  sheet.setColumnWidth(5, 130);
-  sheet.setColumnWidth(6, 140);
-  sheet.setColumnWidth(7, 140);
+  sheet.setColumnWidth(1, 115);
+  sheet.setColumnWidth(2, 105);
+  sheet.setColumnWidth(3, 220);
+  sheet.setColumnWidth(4, 120);
+  sheet.setColumnWidth(5, 210);
+  sheet.setColumnWidth(6, 110);
+  sheet.setColumnWidth(7, 130);
   sheet.setColumnWidth(12, 70);
   sheet.setColumnWidth(13, 105);
   sheet.setColumnWidth(14, 165);
