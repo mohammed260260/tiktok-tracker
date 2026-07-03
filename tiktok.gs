@@ -1017,9 +1017,20 @@ function removeTikTokTriggers() {
 
 
 /**
+ * Master spreadsheet open handler.
+ *
+ * Keep this as the only onOpen(e) in the project so every custom menu
+ * builder is run from one place.
+ */
+function onOpen(e) {
+  buildTikTokMenu_();
+}
+
+
+/**
  * Adds TikTok helpers to the spreadsheet menu.
  */
-function onOpen() {
+function buildTikTokMenu_() {
   SpreadsheetApp.getUi()
     .createMenu('TikTok')
     .addItem('Update TikTok Tracker', 'updateTikTokTracker')
