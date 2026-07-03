@@ -1017,25 +1017,6 @@ function removeTikTokTriggers() {
 
 
 /**
- * Adds TikTok helpers to the spreadsheet menu.
- */
-function onOpen() {
-  SpreadsheetApp.getUi()
-    .createMenu('TikTok')
-    .addItem('Update TikTok Tracker', 'updateTikTokTracker')
-    .addSeparator()
-    .addItem('Show Outstanding This Run', 'filterTikTokOutstandingThisRun')
-    .addItem('Clear Tracker Filters', 'clearTikTokTrackerFilters')
-    .addSeparator()
-    .addItem('Send Monthly Payment Emails', 'sendMonthlyTikTokPaymentEmails')
-    .addItem('Send Test Payment Summary To Me', 'sendTikTokPaymentSummaryTestToMe')
-    .addSeparator()
-    .addItem('Mark Selected Rows As Paid', 'markSelectedTikTokRowsAsPaid')
-    .addToUi();
-}
-
-
-/**
  * Filters the main tracker to rows requiring attention this run.
  */
 function filterTikTokOutstandingThisRun() {
